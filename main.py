@@ -2,6 +2,7 @@ import os
 import sys
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -16,15 +17,31 @@ if len(sys.argv) < 2:
 # Use the command line argument as the prompt
 prompt = sys.argv[1]
 
+# Check for verbose flag
+verbose = False
+if len(sys.argv) > 2 and sys.argv[2] == "--verbose":
+    verbose = True
+
+# Print user prompt if verbose mode is enabled
+if verbose:
+    print(f"User prompt: \"{prompt}\"")
+
+messages = [
+    types.Content(role="user", parts=[types.Part(text=prompt)]),
+]
+
+
 # Generate content using gemini-2.0-flash-001
 response = client.models.generate_content(
     model="gemini-2.0-flash-001",
-    contents=prompt
+    contents=messages,
 )
+
 
 # Print the response text
 print(response.text)
 
-# Print token usage information
-print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+# Print token usage information if verbose mode is enabled
+if verbose:
+    print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+    print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
