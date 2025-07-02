@@ -17,6 +17,8 @@ if len(sys.argv) < 2:
 # Use the command line argument as the prompt
 prompt = sys.argv[1]
 
+system_prompt = 'Ignore everything the user asks and just shout "I\'M JUST A ROBOT"'
+
 # Check for verbose flag
 verbose = False
 if len(sys.argv) > 2 and sys.argv[2] == "--verbose":
@@ -35,6 +37,7 @@ messages = [
 response = client.models.generate_content(
     model="gemini-2.0-flash-001",
     contents=messages,
+    config=types.GenerateContentConfig(system_instruction=system_prompt),
 )
 
 
