@@ -3,6 +3,7 @@ import sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from functions.get_files_info import schema_get_files_info
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -17,8 +18,15 @@ if len(sys.argv) < 2:
 # Use the command line argument as the prompt
 prompt = sys.argv[1]
 
-system_prompt = 'Ignore everything the user asks and just shout "I\'M JUST A ROBOT"'
+system_prompt = """
+You are a helpful AI coding agent.
 
+When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
+
+- List files and directories
+
+All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+"""
 # Check for verbose flag
 verbose = False
 if len(sys.argv) > 2 and sys.argv[2] == "--verbose":
@@ -32,19 +40,47 @@ messages = [
     types.Content(role="user", parts=[types.Part(text=prompt)]),
 ]
 
+available_functions = types.Tool(
+    function_declarations=[
+        schema_get_files_info,
+    ]
+)
 
 # Generate content using gemini-2.0-flash-001
 response = client.models.generate_content(
     model="gemini-2.0-flash-001",
     contents=messages,
-    config=types.GenerateContentConfig(system_instruction=system_prompt),
+    config=types.GenerateContentConfig(
+        system_instruction=system_prompt,
+        tools=[available_functions],
+    ),
 )
 
 
-# Print the response text
-print(response.text)
+# Handle the response
+if hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts:
+    for part in response.candidates[0].content.parts:
+        if hasattr(part, 'function_call') and part.function_call:
+            # If this part is a function call
+            function_call_part = part.function_call
+            # Check if the function_call_part has the expected attributes
+            if hasattr(function_call_part, 'name') and hasattr(function_call_part, 'args'):
+                print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+                
+                # Here can handle the function call and execute the function
+            else:
+                print("Function call detected but missing name or args:", function_call_part)
+        elif hasattr(part, 'text'):
+            # Regular text response
+            print(part.text)
+        else:
+            print("Unknown part type:", part)
+else:
+    # Fallback to just printing the text
+    print(response.text)
 
 # Print token usage information if verbose mode is enabled
 if verbose:
     print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
     print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+
