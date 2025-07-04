@@ -1,5 +1,6 @@
 import os
 import subprocess
+from google.genai import types
 
 def run_python_file(working_directory, file_path):
     # Convert working_directory to absolute path
@@ -56,3 +57,20 @@ def run_python_file(working_directory, file_path):
         return f"Error: Execution of '{file_path}' timed out after 30 seconds"
     except Exception as e:
         return f"Error executing Python file: {str(e)}"
+
+
+# Function declaration for run_python_file
+schema_run_python_file = types.FunctionDeclaration(
+    name="run_python_file",
+    description="Executes a Python file and returns its output, constrained to the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "file_path": types.Schema(
+                type=types.Type.STRING,
+                description="The path to the Python file to execute, relative to the working directory. Must have a .py extension.",
+            ),
+        },
+        required=["file_path"],
+    ),
+)
