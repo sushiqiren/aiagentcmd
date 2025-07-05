@@ -65,6 +65,53 @@ response = client.models.generate_content(
     ),
 )
 
+def call_function(function_call_part, verbose=False):
+    # Get the function name
+    func_name = function_call_part.name
+    
+    # Get the arguments
+    func_args = function_call_part.args
+
+    # Set the working directory
+    working_directory = "./calculator"
+    
+    # Print info based on verbosity level
+    if verbose:
+        print(f"Calling function: {func_name}({func_args})")
+    else:
+        print(f" - Calling function: {func_name}")
+
+    try:
+        # Dispatch to the correct function based on name
+        if func_name == "get_files_info":
+            from functions.get_files_info import get_files_info
+            function_result = get_files_info(working_directory, **func_args)
+        
+        elif func_name == "get_file_content":
+            from functions.get_file_content import get_file_content
+            function_result = get_file_content(working_directory, **func_args)
+        
+        elif func_name == "write_file":
+            from functions.write_file import write_file
+            function_result = write_file(working_directory, **func_args)
+        
+        elif func_name == "run_python_file":
+            from functions.run_python import run_python_file
+            function_result = run_python_file(working_directory, **func_args)
+        
+        else:
+            return f"Error: Unknown function '{func_name}'"
+        
+        if verbose:
+            print(f"-> {{'result': {function_result}}}")
+            
+        return function_result
+        
+    except Exception as e:
+        error_message = f"Error executing function: {str(e)}"
+        if verbose:
+            print(f"-> {{'error': {error_message}}}")
+        return error_message
 
 # Handle the response
 if hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts:
@@ -72,11 +119,22 @@ if hasattr(response.candidates[0].content, 'parts') and response.candidates[0].c
         if hasattr(part, 'function_call') and part.function_call:
             # If this part is a function call
             function_call_part = part.function_call
+            
             # Check if the function_call_part has the expected attributes
             if hasattr(function_call_part, 'name') and hasattr(function_call_part, 'args'):
-                print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+                # Call the function and get the result
+                function_result = call_function(function_call_part, verbose)
                 
-                # Here can handle the function call and execute the function
+                # Just print the function result and don't try to send it back to Gemini
+                # This avoids the API error about function response parts
+                if verbose:
+                    print(f"Result: {function_result}")
+                else:
+                    print(f"Result of {function_call_part.name}: {function_result}")
+                
+                # Don't try to generate a follow-up response with the function result
+                # This is what's causing the error
+                
             else:
                 print("Function call detected but missing name or args:", function_call_part)
         elif hasattr(part, 'text'):
