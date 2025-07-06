@@ -55,16 +55,6 @@ available_functions = types.Tool(
     ]
 )
 
-# Generate content using gemini-2.0-flash-001
-response = client.models.generate_content(
-    model="gemini-2.0-flash-001",
-    contents=messages,
-    config=types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        tools=[available_functions],
-    ),
-)
-
 def call_function(function_call_part, verbose=False):
     # Get the function name
     func_name = function_call_part.name
@@ -113,41 +103,86 @@ def call_function(function_call_part, verbose=False):
             print(f"-> {{'error': {error_message}}}")
         return error_message
 
-# Handle the response
-if hasattr(response.candidates[0].content, 'parts') and response.candidates[0].content.parts:
-    for part in response.candidates[0].content.parts:
-        if hasattr(part, 'function_call') and part.function_call:
-            # If this part is a function call
-            function_call_part = part.function_call
-            
-            # Check if the function_call_part has the expected attributes
-            if hasattr(function_call_part, 'name') and hasattr(function_call_part, 'args'):
-                # Call the function and get the result
-                function_result = call_function(function_call_part, verbose)
-                
-                # Just print the function result and don't try to send it back to Gemini
-                # This avoids the API error about function response parts
-                if verbose:
-                    print(f"Result: {function_result}")
-                else:
-                    print(f"Result of {function_call_part.name}: {function_result}")
-                
-                # Don't try to generate a follow-up response with the function result
-                # This is what's causing the error
-                
-            else:
-                print("Function call detected but missing name or args:", function_call_part)
-        elif hasattr(part, 'text'):
-            # Regular text response
-            print(part.text)
-        else:
-            print("Unknown part type:", part)
-else:
-    # Fallback to just printing the text
-    print(response.text)
+# Define max iterations to prevent infinite loops
+MAX_ITERATIONS = 20
 
-# Print token usage information if verbose mode is enabled
-if verbose:
-    print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-    print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+# Initialize a flag to track if we're done
+done = False
+iterations = 0
 
+# Start the conversation loop
+while not done and iterations < MAX_ITERATIONS:
+    iterations += 1
+    
+    if verbose:
+        print(f"\n--- Iteration {iterations} ---")
+    
+    # Generate content using the current messages
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-001",
+        contents=messages,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=[available_functions],
+        ),
+    )
+    
+    # Track if a function was called in this iteration
+    function_called = False
+    
+    # Process all candidates
+    if hasattr(response, 'candidates') and response.candidates:
+        # Add each candidate's content to our messages
+        for candidate in response.candidates:
+            if hasattr(candidate, 'content') and candidate.content:
+                # Process the parts in this candidate
+                if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            # Function call detected
+                            function_call_part = part.function_call
+                            
+                            if hasattr(function_call_part, 'name') and hasattr(function_call_part, 'args'):
+                                # Call the function
+                                function_result = call_function(function_call_part, verbose)
+                                function_called = True
+                                
+                                # Print the result
+                                if verbose:
+                                    print(f"Result: {function_result}")
+                                else:
+                                    print(f"Result of {function_call_part.name}: {function_result}")
+                                
+                                # Add the function call to messages
+                                messages.append(candidate.content)
+                                
+                                # Add a message with the function result
+                                function_response = types.Content(
+                                    role="user",  # Using 'user' role avoids the API error
+                                    parts=[types.Part(text=f"Function {function_call_part.name} returned: {function_result}")]
+                                )
+                                messages.append(function_response)
+                            else:
+                                print("Function call detected but missing name or args:", function_call_part)
+                        elif hasattr(part, 'text') and part.text.strip():
+                            # Text response
+                            print(part.text)
+                            # Don't add text parts individually as we already added the whole content
+    
+    # If no function was called in this iteration, we're done
+    if not function_called:
+        done = True
+        # Print the final response
+        if hasattr(response, 'text'):
+            print("\nFinal response:")
+            print(response.text)
+    
+    # Print token usage if in verbose mode
+    if verbose:
+        if hasattr(response, 'usage_metadata'):
+            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+
+# Report if we hit the max iterations
+if iterations >= MAX_ITERATIONS:
+    print(f"\nReached maximum number of iterations ({MAX_ITERATIONS}).")
